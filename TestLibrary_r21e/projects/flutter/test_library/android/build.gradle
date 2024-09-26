@@ -1,0 +1,107 @@
+group = "com.example.test_library"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "1.7.10"
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:7.3.0")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    if (project.android.hasProperty("namespace")) {
+        namespace = "com.example.test_library"
+    }
+
+    compileSdk = 34
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+
+    task copyNativeDependency {
+        logger.quiet "Copy native dependency"
+
+        def libsDir = file("$projectDir.absolutePath/libs")
+        def aarFile = file("$libsDir/../../../../Android/app/TestLibrary/build/outputs/aar/TestLibrary-release.aar")
+        def unpackDir = file("$libsDir/unpackedAar")
+
+        logger.quiet "aarFile: ${aarFile}"
+
+        logger.quiet "Checking for AAR file"
+        if (aarFile.exists()) {
+            logger.quiet "AAR file exists, unpacking..."
+            ant.unzip(src: aarFile, dest: unpackDir)
+        } else {
+            logger.quiet "AAR file does not exist!"
+        }
+
+        ant.move(file: "$unpackDir/jni/arm64-v8a", todir: libsDir, overwrite: true, failonerror: false)
+        ant.move(file: "$unpackDir/classes.jar", todir: libsDir, overwrite: true)
+
+        doLast {
+            logger.quiet "Cleaning up unpack directory"
+            delete unpackDir
+        }
+    }
+
+    tasks.withType(JavaCompile) {
+        preBuild.dependsOn 'copyNativeDependency'
+    }
+
+    sourceSets {
+        main {
+            jniLibs {
+                srcDirs = ['libs']
+            }
+        }
+    }
+
+    dependencies {
+        testImplementation("org.jetbrains.kotlin:kotlin-test")
+        testImplementation("org.mockito:mockito-core:5.0.0")
+        implementation fileTree(dir: 'libs', include: ['*.jar'])
+    }
+
+    testOptions {
+        unitTests.all {
+            useJUnitPlatform()
+
+            testLogging {
+               events "passed", "skipped", "failed", "standardOut", "standardError"
+               outputs.upToDateWhen {false}
+               showStandardStreams = true
+            }
+        }
+    }
+}
